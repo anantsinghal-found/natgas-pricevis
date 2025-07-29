@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 
+st.set_page_config(layout="wide")
+
+
 # State name to abbreviation mapping
 def get_state_abbrev():
     return {
@@ -73,22 +76,98 @@ def plot_map(nat_gas_threshold, elec_threshold):
             hovertext=[f"{row['state']}: Gas ${row['nat_gas_price']:.2f}/MWh, Elec ${row['elec_price']:.2f}/MWh" for i, row in sub.iterrows()],
             hoverinfo='text',
         ))
+    
+    # --- Industrial Sites Circles ---
+    try:
+        industrial_df = pd.read_excel('industrial_sites_rtc_member_data.xlsx')
+        # Filter out states with 0 companies
+        industrial_df = industrial_df[industrial_df['Number of Companies with Industrial/Manufacturing Sites'] > 0]
+        
+        # State centroid coordinates (approximate)
+        state_centroids = {
+            'AL': (32.8, -86.8), 'AK': (64.0, -152.0), 'AZ': (33.7, -111.6), 'AR': (35.2, -92.4),
+            'CA': (36.8, -119.4), 'CO': (39.0, -105.5), 'CT': (41.6, -72.7), 'DE': (38.9, -75.5),
+            'DC': (38.9, -77.0), 'FL': (27.7, -81.5), 'GA': (32.6, -83.4), 'HI': (19.9, -155.6),
+            'ID': (44.4, -114.7), 'IL': (40.0, -89.0), 'IN': (39.8, -86.1), 'IA': (42.0, -93.2),
+            'KS': (38.5, -98.0), 'KY': (37.5, -85.3), 'LA': (31.2, -91.8), 'ME': (44.5, -69.2),
+            'MD': (39.0, -76.7), 'MA': (42.3, -71.8), 'MI': (44.3, -85.6), 'MN': (46.7, -94.7),
+            'MS': (32.7, -89.6), 'MO': (38.5, -92.5), 'MT': (47.0, -110.5), 'NE': (41.5, -99.7),
+            'NV': (39.3, -116.6), 'NH': (43.7, -71.6), 'NJ': (40.1, -74.7), 'NM': (34.5, -106.0),
+            'NY': (43.0, -75.0), 'NC': (35.6, -79.8), 'ND': (47.5, -100.5), 'OH': (40.4, -82.7),
+            'OK': (35.6, -97.1), 'OR': (44.0, -120.6), 'PA': (40.9, -77.8), 'RI': (41.6, -71.5),
+            'SC': (33.9, -80.9), 'SD': (44.3, -100.3), 'TN': (35.7, -86.7), 'TX': (31.5, -100.0),
+            'UT': (39.3, -111.6), 'VT': (44.0, -72.7), 'VA': (37.5, -78.5), 'WA': (47.4, -121.5),
+            'WV': (38.6, -80.9), 'WI': (44.3, -89.6), 'WY': (42.7, -107.2)
+        }
+        
+        # Add circles for industrial sites
+        for _, row in industrial_df.iterrows():
+            state = row['State']
+            num_companies = row['Number of Companies with Industrial/Manufacturing Sites']
+            
+            if state in state_centroids:
+                lat, lon = state_centroids[state]
+                # Scale circle size based on number of companies (min 5, max 20)
+                size = max(5, min(20, 5 + (num_companies * 2)))
+                
+                fig.add_trace(go.Scattergeo(
+                    lon=[lon],
+                    lat=[lat],
+                    mode='markers',
+                    marker=dict(
+                        size=size,
+                        color='blue',
+                        opacity=0.2,
+                        line=dict(width=1, color='darkblue')
+                    ),
+                    name=f'{state}: {num_companies} companies',
+                    showlegend=False,
+                    hovertext=f'{state}: {num_companies} industrial companies',
+                    hoverinfo='text'
+                ))
+        
+        # Add legend circles for scale (positioned off-map)
+        legend_sizes = [5, 20]
+        legend_companies = [1, 15]
+        #legend_lat = 25  # Below the map
+        #legend_lon = -110  # West of the map
+        
+        for i, (size, companies) in enumerate(zip(legend_sizes, legend_companies)):
+            fig.add_trace(go.Scattergeo(
+                lon=[None], 
+                lat=[None],
+                mode='markers',
+                marker=dict(
+                    size=size,
+                    color='blue',
+                    opacity=0.2,
+                    line=dict(width=1, color='darkblue')
+                ),
+                name=f'{companies} industrial sites',
+                showlegend=True,
+                hovertext=f'Legend: {companies} industrial sites',
+                hoverinfo='text'
+            ))
+            
+    except Exception as e:
+        st.warning(f"Could not load industrial sites data: {e}")
+    
     fig.update_layout(
         title={
             'text': (
-                f'US States: High Gas (&gt; ${nat_gas_threshold}/MWh) or Electricity (&gt; ${elec_threshold}/MWh)<br>'
-                f'Green: Either Above Threshold | Red: Both Below'
+                f'Green: High-Cost State (Gas > ${nat_gas_threshold}/MWh or Electricity > ${elec_threshold}/MWh) <br>'
+                f' Red: Low-Cost State (Both < Threshold)'
             ),
             'x': 0.5,
             'xanchor': 'center'
         },
         geo=dict(scope='usa'),
-        legend_title_text='Price Category',
+        legend_title_text='No. of Industrial Sites',
         height=700
     )
     return fig
 
-st.title('US State Energy Price Heatmap')
+st.title('US Energy Price Analysis')
 nat_gas_threshold = st.number_input('Natural Gas Price Threshold ($/MWh)', min_value=0.0, value=30.0)
 elec_threshold = st.number_input('Electricity Price Threshold ($/MWh)', min_value=0.0, value=105.0)
 fig = plot_map(nat_gas_threshold, elec_threshold)
